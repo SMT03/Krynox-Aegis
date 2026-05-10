@@ -1,0 +1,42 @@
+[
+  {
+    "id": "THREAT-001",
+    "timestamp": "2026-05-10T14:20:00Z",
+    "threat_type": "Unauthorized Read: ~/.config/solana/id.json",
+    "action_taken": "Process Terminated (SIGKILL 9)",
+    "pid": 5821,
+    "report": "## SYSCALL INTERCEPTION\nThe Krynox eBPF-LSM module intercepted a `security_file_open` syscall on the primary Solana secret keypair. The process was attempting a raw read bypass.\n\n## ATTACK VECTOR\nDetected a **MITRE T1552** (Unsecured Credentials) pattern. The offending script utilized a symlink obfuscation technique, which was resolved in kernel-space via VFS dentry resolution.\n\n## MITIGATION\nImmediate SIGKILL issued. Zero-byte exfiltration confirmed. Hardware-level integrity maintained.",
+    "tx_signature": "4vT7ZpQx9yW2e9U8R7M6N5B4V3C2X1Z0K9J8H7G6F5D4S3A2P1O0I9U8Y7T6R5E4",
+    "tx_cost": "0.000005 SOL"
+  },
+  {
+    "id": "THREAT-002",
+    "timestamp": "2026-05-10T15:45:12Z",
+    "threat_type": "Masquerading Evasion: /tmp/link_audit -> id.json",
+    "action_taken": "Process Terminated (SIGKILL 9)",
+    "pid": 12403,
+    "report": "## SYSCALL INTERCEPTION\nIntercepted at `vfs_open` layer. A malicious Python subprocess attempted to access the keypair through a nested symlink directory structure.\n\n## ATTACK VECTOR\nCorresponds to **T1036** (Masquerading). The attacker attempted to hide the target file path by using temporary directory redirects.\n\n## MITIGATION\nThe Krynox eBPF module resolved the absolute inode target before the syscall was allowed to proceed. Process was terminated instantly.",
+    "tx_signature": "2JofVsxBtK55f32LpvMixbrpYbid4FjkKRY2FcHoMCeVK8UDxvsJ6bYQvBCRzHPNaxYSdtpif4mHmJ9CM3n15jXD",
+    "tx_cost": "0.000005 SOL"
+  },
+  {
+    "id": "THREAT-003",
+    "timestamp": "2026-05-10T17:10:05Z",
+    "threat_type": "Supply-Chain Malicious Hook: node_modules/.bin/sol-audit",
+    "action_taken": "Process Terminated (SIGKILL 9)",
+    "pid": 44921,
+    "report": "## SYSCALL INTERCEPTION\nIntercepted unauthorized access from a compromised npm dependency attempting to exfiltrate BIP39 seed phrases during a CI/CD build process.\n\n## ATTACK VECTOR\nSupply-chain injection. The process attempted to read the developer's default keypair and send it to a remote C2 server.\n\n## MITIGATION\nKernel-level blocking prevented any network outbound traffic by terminating the parent process before the file read completion.",
+    "tx_signature": "3pQA5itG2RH81yyvcFHWxgt1W3Kzmfo6gPB2oP6JJZeoAxrCGH8upSozMjagDkXpgxcdBdFhRGZmsq14kX6oLYCp",
+    "tx_cost": "0.000005 SOL"
+  },
+  {
+    "id": "THREAT-004",
+    "timestamp": "2026-05-10T18:05:30Z",
+    "threat_type": "Unauthorized Process: /usr/bin/curl attempting keypair read",
+    "action_taken": "Process Terminated (SIGKILL 9)",
+    "pid": 60112,
+    "report": "## SYSCALL INTERCEPTION\nAn unauthorized binary (`curl`) attempted to open the sensitive `id.json` file. This is a clear violation of Zero-Trust access policies.\n\n## ATTACK VECTOR\nCredential Theft attempt. Standard system utilities were being leveraged to exfiltrate private keys via a simple HTTP POST.\n\n## MITIGATION\nKrynox eBPF-LSM detected the process mismatch (Curl is not in the developer whitelist) and issued a kernel-level kill signal.",
+    "tx_signature": "5Vnhw73dbxgjnbRVmjgNavYAtQvG49NRdr3kjKuGUAUfuDzqHvgbqiExvG2pwMNhEYVhJWp9M676srNgMAXup92V",
+    "tx_cost": "0.000005 SOL"
+  }
+]

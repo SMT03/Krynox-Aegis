@@ -1,0 +1,61 @@
+# Krynox Aegis - Security Audit Report
+Date: 2026-05-10
+Auditor: Gemini CLI (Cybersecurity Analyst Persona)
+
+## 1. Executive Summary
+Krynox Aegis is a kernel-level security suite designed to protect Solana keypairs. While it implements advanced eBPF-LSM hooks for real-time protection, several critical and high-severity security flaws were identified in its implementation, particularly in its networking configuration, privilege management, and bypass-prone whitelisting logic.
+
+---
+
+## 2. Vulnerability Findings
+
+### [CRITICAL] 2.1. Insecure FastAPI CORS Configuration
+- **File:** `sentinel.py`
+- **Impact:** High. Any website visited by the developer can make requests to `http://localhost:8000/threats`, potentially exfiltrating sensitive threat history or performing actions if the API is expanded.
+- **Detail:** `allow_origins=["*"]` is used in the FastAPI middleware.
+- **Recommendation:** Restrict `allow_origins` to only the specific dashboard URL (e.g., `http://localhost:5173`).
+
+### [CRITICAL] 2.2. Unauthenticated Global API Exposure
+- **File:** `sentinel.py`
+- **Impact:** High. The backend API listens on `0.0.0.0:8000`, making it accessible to anyone on the same local network. There is no authentication mechanism.
+- **Detail:** `uvicorn.run(app, host="0.0.0.0", port=8000)`.
+- **Recommendation:** Bind to `127.0.0.1` unless remote access is explicitly required, and implement API key or token-based authentication.
+
+### [HIGH] 2.3. Trivial eBPF Whitelist Bypass
+- **File:** `krynox_core.bpf.c` and `sentinel.py`
+- **Impact:** High. A malicious process can easily bypass the kernel-level protection.
+- **Detail:** Both the eBPF code and Python backend rely on the `comm` (command name) to whitelist processes like `solana` and `python3`. A malicious script can use `prctl(PR_SET_NAME, "solana")` or simply rename its executable to `solana` to evade detection and termination.
+- **Recommendation:** Use more robust identification methods such as binary path verification (checked against a hash) or parent process verification (though PIDs can be reused).
+
+### [HIGH] 2.4. Root Privilege Escalation Risk
+- **File:** `krynox.service`
+- **Impact:** Critical. If `sentinel.py` or any of its dependencies (FastAPI, LangChain, etc.) are compromised, the attacker gains full root access to the system.
+- **Detail:** The service runs as `root:root` to enable eBPF attachment.
+- **Recommendation:** Implement privilege separation. Run the eBPF attachment logic in a small, audited root process, and pass the data (e.g., via a Unix socket or BPF map) to a non-privileged user process for AI analysis and API serving. Use Linux capabilities (e.g., `CAP_SYS_ADMIN` or `CAP_BPF`) instead of full root where possible.
+
+### [MEDIUM] 2.5. Shell Injection Potential in Notifications
+- **File:** `sentinel.py`
+- **Impact:** Medium. Potential for command execution if inputs are manipulated.
+- **Detail:** `os.system(notify_cmd)` is used with a complex shell string involving `logname` and `sudo -u`. While `event.pid` is an integer, the overall pattern of building shell commands from external data is dangerous.
+- **Recommendation:** Use `subprocess.run` with a list of arguments and avoid shell execution (`shell=False`).
+
+### [MEDIUM] 2.6. Fragile Filename Matching
+- **File:** `krynox_core.bpf.c`
+- **Impact:** Medium. False positives/denials of service.
+- **Detail:** The `has_id_json` function kills any process opening a file with "id.json" in its name. This could impact legitimate software unrelated to Solana.
+- **Recommendation:** Use more specific path matching (e.g., checking for `.config/solana/id.json`) or allow users to configure exact paths.
+
+---
+
+## 3. Dependency Analysis
+- `fastapi==0.109.0`: Check for CVEs (e.g., potential DoS or header parsing issues).
+- `uvicorn==0.27.0`: Generally stable, but keep updated.
+- `langchain-groq`: Third-party integration; ensure API keys are handled securely (they are currently loaded from `.env`, which is good, but file permissions on `.env` should be verified).
+
+---
+
+## 4. Recommendations for Remediation
+1. **Immediate:** Change FastAPI `allow_origins` to a specific origin and bind `uvicorn` to `127.0.0.1`.
+2. **Short-term:** Replace `comm`-based whitelisting with PID-based whitelisting managed by the sentinel, and use binary path validation.
+3. **Architecture:** Refactor the sentinel into two components: a privileged "Monitor" (C/eBPF) and a non-privileged "Analyzer/Dashboard" (Python/FastAPI).
+4. **Hardening:** Use `chmod 600` on the `.env` file and `krynox_history.json` to ensure only root/authorized users can read them.
