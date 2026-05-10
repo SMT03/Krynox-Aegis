@@ -12,6 +12,8 @@ import {
   RefreshCcw,
   AlertTriangle,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Zap,
   Download
 } from 'lucide-react';
@@ -178,7 +180,7 @@ export default function App() {
               </div>
               
               <div className="grid grid-cols-2 gap-4">
-                <StatCard label="Balance" value={`${solBalance.toFixed(2)} SOL`} sub="Devnet" />
+                <StatCard label="Balance" value={`${solBalance.toFixed(10)} SOL`} sub="Devnet" />
                 <StatCard label="Network TPS" value={networkStats.tps} sub="Live" color="text-cyber-green" />
               </div>
 
@@ -218,7 +220,12 @@ export default function App() {
             ) : (
               <AnimatePresence initial={false}>
                 {threats.map((threat, idx) => (
-                  <ThreatCard key={idx} threat={threat} />
+                  <ThreatCard 
+                    key={idx} 
+                    threat={threat} 
+                    index={idx}
+                    total={threats.length}
+                  />
                 ))}
               </AnimatePresence>
             )}
@@ -273,66 +280,95 @@ function ActionButton({ icon, label, onClick }) {
   );
 }
 
-function ThreatCard({ threat }) {
+function ThreatCard({ threat, index, total }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isError = threat.tx_signature?.startsWith('Error') || threat.tx_signature?.startsWith('Blockchain Error');
   const isPending = threat.tx_signature === 'Pending...';
+  
+  // Display index as #01, #02 etc.
+  const displayIndex = (total - index).toString().padStart(2, '0');
   
   return (
     <motion.div 
       initial={{ opacity: 0, y: -20, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      className={`border-l-2 ${isPending ? 'border-cyber-blue animate-pulse' : 'border-cyber-red'} bg-white/5 p-4 rounded-r-xl space-y-3 relative group`}
+      className={`border-l-2 ${isPending ? 'border-cyber-blue animate-pulse' : 'border-cyber-red'} bg-white/5 rounded-r-xl overflow-hidden relative group transition-all duration-300 ${isExpanded ? 'p-4' : 'p-3'}`}
     >
-      <div className="flex justify-between items-start">
-        <div className="flex items-center gap-2">
-          {isPending ? (
-            <RefreshCcw className="w-4 h-4 text-cyber-blue animate-spin" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 text-cyber-red" />
-          )}
-          <span className={`text-xs font-bold font-mono uppercase tracking-tighter ${isPending ? 'text-cyber-blue' : 'text-cyber-red'}`}>
-            {isPending ? 'Intercepting Threat...' : `Threat Blocked: PID ${threat.pid}`}
-          </span>
+      <div 
+        className="flex justify-between items-center cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono text-white/30 font-bold tracking-widest">#{displayIndex}</span>
+          <div className="flex items-center gap-2">
+            {isPending ? (
+              <RefreshCcw className="w-4 h-4 text-cyber-blue animate-spin" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-cyber-red" />
+            )}
+            <span className={`text-xs font-bold font-mono uppercase tracking-tighter ${isPending ? 'text-cyber-blue' : 'text-cyber-red'}`}>
+              {isPending ? 'Intercepting Threat...' : `Threat Blocked: PID ${threat.pid}`}
+            </span>
+          </div>
         </div>
-        <span className="text-[10px] text-slate-600 font-mono">{new Date().toLocaleTimeString()}</span>
+        <div className="flex items-center gap-4">
+          <span className="text-[10px] text-slate-600 font-mono hidden md:block">{new Date().toLocaleTimeString()}</span>
+          {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500 group-hover:text-white transition-colors" />}
+        </div>
       </div>
 
-      <div className={`text-xs font-mono leading-relaxed pl-6 border-l border-white/10 ${isPending ? 'text-slate-500 italic' : 'text-slate-300'}`}>
-        <ReactMarkdown 
-          components={{
-            p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-            h1: ({node, ...props}) => <h1 className="text-sm font-bold text-cyber-green mt-4 mb-2 uppercase" {...props} />,
-            h2: ({node, ...props}) => <h2 className="text-sm font-bold text-cyber-green mt-4 mb-2 uppercase" {...props} />,
-            h3: ({node, ...props}) => <h3 className="text-xs font-bold text-white mt-3 mb-1 uppercase" {...props} />,
-            strong: ({node, ...props}) => <strong className="text-cyber-green font-bold" {...props} />,
-            ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
-            li: ({node, ...props}) => <li className="text-[11px]" {...props} />,
-          }}
-        >
-          {threat.report}
-        </ReactMarkdown>
-      </div>
-
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-2">
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <Zap className={`w-3 h-3 ${isPending ? 'text-slate-600' : 'text-cyber-green'}`} />
-          <span className="text-[10px] text-slate-500 font-mono uppercase">Audit Log:</span>
-          <span className={`text-[9px] font-mono truncate max-w-[200px] px-2 py-1 rounded ${isPending ? 'bg-white/5 text-slate-600' : 'bg-cyber-green/5 text-cyber-green'}`}>
-            {threat.tx_signature}
-          </span>
-        </div>
-        
-        {threat.tx_signature && !isError && !isPending && (
-          <a 
-            href={`https://explorer.solana.com/tx/${threat.tx_signature}?cluster=devnet`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[10px] text-cyber-blue hover:underline font-mono uppercase"
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
           >
-            Verify on Solscan <ExternalLink className="w-3 h-3" />
-          </a>
+            <div className="mt-4 pt-4 border-t border-white/5">
+              <div className={`text-xs font-mono leading-relaxed pl-6 border-l border-white/10 ${isPending ? 'text-slate-500 italic' : 'text-slate-300'}`}>
+                <ReactMarkdown 
+                  components={{
+                    p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                    h1: ({node, ...props}) => <h1 className="text-sm font-bold text-cyber-green mt-4 mb-2 uppercase" {...props} />,
+                    h2: ({node, ...props}) => <h2 className="text-sm font-bold text-cyber-green mt-4 mb-2 uppercase" {...props} />,
+                    h3: ({node, ...props}) => <h3 className="text-xs font-bold text-white mt-3 mb-1 uppercase" {...props} />,
+                    strong: ({node, ...props}) => <strong className="text-cyber-green font-bold" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
+                    li: ({node, ...props}) => <li className="text-[11px]" {...props} />,
+                  }}
+                >
+                  {threat.report}
+                </ReactMarkdown>
+              </div>
+
+              <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-4 mt-2">
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <Zap className={`w-3 h-3 ${isPending ? 'text-slate-600' : 'text-cyber-green'}`} />
+                  <span className="text-[10px] text-slate-500 font-mono uppercase">Audit Log:</span>
+                  <span className={`text-[9px] font-mono truncate max-w-[200px] px-2 py-1 rounded ${isPending ? 'bg-white/5 text-slate-600' : 'bg-cyber-green/5 text-cyber-green'}`}>
+                    {threat.tx_signature}
+                  </span>
+                  <span className={`text-[9px] font-mono px-2 py-1 rounded border border-white/5 ${isPending ? 'text-slate-600' : 'text-cyber-green/60 bg-cyber-green/5'}`}>
+                    Cost: {threat.tx_cost || '0 SOL'}
+                  </span>
+                </div>
+                
+                {threat.tx_signature && !isError && !isPending && (
+                  <a 
+                    href={`https://explorer.solana.com/tx/${threat.tx_signature}?cluster=devnet`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[10px] text-cyber-blue hover:underline font-mono uppercase"
+                  >
+                    Verify on Solscan <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            </div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
     </motion.div>
   );
 }

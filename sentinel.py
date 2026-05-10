@@ -46,7 +46,24 @@ from solders.message import MessageV0
 from solders.transaction import VersionedTransaction
 
 # Step 2: The Data Store & FastAPI
+HISTORY_FILE = os.path.join(_script_dir, "krynox_history.json")
 threat_logs = []
+
+def save_history():
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(threat_logs, f, indent=2)
+
+def load_history():
+    global threat_logs
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r") as f:
+                threat_logs = json.load(f)
+                print(f"\033[94m[KRYNOX] Loaded {len(threat_logs)} events from history.\033[0m")
+        except Exception:
+            threat_logs = []
+
+load_history()
 app = FastAPI(title="Krynox Aegis API")
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -127,21 +144,23 @@ def log_threat_to_devnet(ai_report_text: str, keypair_path: str = "/home/symtuh/
     tx = VersionedTransaction(msg, [keypair])
     result = client.send_transaction(tx)
 
-    # result.value is a Signature on success, or an RpcError on failure
     sig_str = str(result.value)
     if sig_str.startswith("Error") or "error" in sig_str.lower():
         raise Exception(f"RPC rejected transaction: {sig_str}")
     
-    return sig_str
+    # Standard Solana fee for simple memo transactions is 5000 lamports (0.000005 SOL)
+    return {"signature": sig_str, "cost": "0.000005 SOL"}
 
 def process_threat_report_async(pid: int):
     # Initialize a placeholder so the dashboard sees the threat immediately
     threat_entry = {
         "pid": pid,
         "report": "Analyzing threat forensics via Groq AI...",
-        "tx_signature": "Pending..."
+        "tx_signature": "Pending...",
+        "tx_cost": "Calculating..."
     }
     threat_logs.append(threat_entry)
+    save_history()
 
     try:
         report = generate_threat_report(pid)
@@ -149,16 +168,22 @@ def process_threat_report_async(pid: int):
         print(f"\n\033[93m[KRYNOX AI REPORT for PID {pid}]:\n{report}\033[0m\n")
         
         try:
-            tx_sig = log_threat_to_devnet(report)
-            threat_entry["tx_signature"] = tx_sig
-            print(f"\033[92m[DEVNET SUCCESS]: Audit log posted! TX Signature: {tx_sig}\033[0m\n")
+            devnet_result = log_threat_to_devnet(report)
+            threat_entry["tx_signature"] = devnet_result["signature"]
+            threat_entry["tx_cost"] = devnet_result["cost"]
+            save_history()
+            print(f"\033[92m[DEVNET SUCCESS]: Audit log posted! TX Signature: {devnet_result['signature']} Cost: {devnet_result['cost']}\033[0m\n")
         except Exception as devnet_err:
             threat_entry["tx_signature"] = f"Blockchain Error: {devnet_err}"
+            threat_entry["tx_cost"] = "N/A"
+            save_history()
             print(f"\033[91m[DEVNET ERROR]: Failed to post audit log: {devnet_err}\033[0m\n")
             
     except Exception as e:
         threat_entry["report"] = f"Forensics Unavailable: {e}"
         threat_entry["tx_signature"] = "N/A"
+        threat_entry["tx_cost"] = "0 SOL"
+        save_history()
         print(f"\n\033[93m[KRYNOX AI ERROR]: Failed to generate report for PID {pid}: {e}\033[0m\n")
 
 
@@ -205,8 +230,14 @@ def print_event(cpu, data, size):
     except Exception as e:
         print("Error killing process {}: {}".format(event.pid, e))
         
-    # Trigger critical desktop notification
-    os.system('notify-send -u critical "KRYNOX TECH: THREAT BLOCKED" "Unauthorized access by PID {} was terminated in kernel-space."'.format(event.pid))
+    # Trigger critical desktop notification (routed to the real user from root)
+    notify_cmd = (
+        'USER_NAME=$(logname); '
+        'USER_ID=$(id -u $USER_NAME); '
+        'sudo -u $USER_NAME DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$USER_ID/bus '
+        'notify-send -u critical "KRYNOX TECH: THREAT BLOCKED" "Unauthorized access by PID {} was terminated in kernel-space."'
+    ).format(event.pid)
+    os.system(notify_cmd)
         
     # Step 3 (Continued): Fire off the generate_threat_report function in the background
     threading.Thread(target=process_threat_report_async, args=(event.pid,), daemon=True).start()
