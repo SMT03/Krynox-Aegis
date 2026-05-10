@@ -2,7 +2,7 @@
   "name": "krynox-demo-mode",
   "private": true,
   "version": "1.0.0",
-  "homepage": "https://SMT03.github.io/krynox-aegis",
+  "homepage": "https://SMT03.github.io/Krynox-Aegis",
   "type": "module",
   "scripts": {
     "dev": "vite",

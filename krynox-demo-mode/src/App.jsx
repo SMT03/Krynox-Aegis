@@ -86,7 +86,7 @@ export default function App() {
       <header className="flex flex-col md:flex-row justify-between items-center gap-4 glass-panel p-6 rounded-2xl neon-border-green">
         <div className="flex items-center gap-4">
           <img 
-            src="/Gemini_Generated_Image_5lnmiv5lnmiv5lnm-removebg-preview.png" 
+            src="Gemini_Generated_Image_5lnmiv5lnmiv5lnm-removebg-preview.png" 
             alt="Krynox Logo" 
             className="w-12 h-12 object-contain drop-shadow-[0_0_10px_rgba(0,255,204,0.5)]" 
           />
