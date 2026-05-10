@@ -11,10 +11,10 @@
 - **Persistent Audit Vault**: All threat logs are persisted locally in `krynox_history.json`, ensuring zero data loss across system restarts.
 - **Blockchain Audit Logs**: Every blocked threat is hashed and permanently logged to the **Solana Devnet** using the SPL Memo program.
 - **Cost & Balance Transparency**: Real-time tracking of blockchain transaction fees (with 10-decimal SOL precision) for every audit log entry.
-- **Advanced Cyber-Dashboard**: 
-    - **Collapsible Feeds**: Organized, numbered threat cards with expandable forensic dossiers.
-    - **Markdown Rendering**: Reports are formatted with professional security headers and bold highlights.
-    - **JSON Export**: One-click forensic export for offline incident response.
+- **Advanced Cyber-Dashboard**:
+  - **Collapsible Feeds**: Organized, numbered threat cards with expandable forensic dossiers.
+  - **Markdown Rendering**: Reports are formatted with professional security headers and bold highlights.
+  - **JSON Export**: One-click forensic export for offline incident response.
 - **Masquerading Defense**: Defeats symlink evasion by resolving VFS-layer dentries in kernel-space.
 
 ## 🛠️ Technology Stack
@@ -30,6 +30,7 @@
 ### Installation
 
 **Option 1: Automated Install (Recommended)**
+
 ```bash
 git clone https://github.com/SMT03/Krynox-Aegis.git
 cd Krynox-Aegis
@@ -38,6 +39,7 @@ sudo ./install.sh
 ```
 
 **Option 2: Manual Install**
+
 1. Install Python dependencies:
    ```bash
    pip install -r requirements.txt
@@ -54,7 +56,5 @@ sudo ./install.sh
    ```
 
 ## 📜 Security Policy
-See [SECURITY.md](SECURITY.md) for vulnerability reporting and our MITRE ATT&CK mitigation mapping.
 
----
-*Built for the Solana Colosseum Hackathon by Krynox Tech Security Labs.*
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and our MITRE ATT&CK mitigation mapping.
