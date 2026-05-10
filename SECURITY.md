@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-The Krynox Tech team takes the security of Solana developers' environments seriously. If you discover a security vulnerability within Krynox Aegis, please do not use the GitHub issue tracker. Instead, send a detailed report to `security@krynox.tech`.
+The security of Solana developers' environments is a top priority. If you discover a security vulnerability within Krynox Aegis, please do not use the GitHub issue tracker. Instead, please open a private security advisory on GitHub or contact the author directly through GitHub's messaging features.
 
 ## Threat Model & MITRE ATT&CK Mapping
 

@@ -3,6 +3,7 @@
 **Krynox Aegis** is an enterprise-grade, kernel-level security suite designed to protect Solana developers from credential theft and supply-chain attacks. By leveraging eBPF-LSM hooks, it synchronously blocks unauthorized access to sensitive private keys and generates immutable forensic reports on the Solana Devnet.
 
 ![Krynox Banner](krynox-ui/public/Gemini_Generated_Image_5lnmiv5lnmiv5lnm-removebg-preview.png)
+*Built for the Solana Colosseum Hackathon.*
 
 ## ⚡ Core Features
 
