@@ -1,0 +1,23 @@
+# Environments
+.env
+venv/
+env/
+.venv/
+conda-env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDEs
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+
+# Audit and Test scripts
+security_audit.py
+debug_devnet.py
+test_env.py

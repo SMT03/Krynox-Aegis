@@ -27,10 +27,23 @@ for path in local_site_packages:
     if path not in sys.path:
         sys.path.append(path)
 
+from dotenv import load_dotenv
+# Use the script's own directory to locate .env, so it works under sudo
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_script_dir, ".env"))
+
 from fastapi import FastAPI
 import uvicorn
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
+import hashlib
+import json
+from solana.rpc.api import Client
+from solders.keypair import Keypair
+from solders.pubkey import Pubkey
+from solders.instruction import Instruction
+from solders.message import MessageV0
+from solders.transaction import VersionedTransaction
 
 # Step 2: The Data Store & FastAPI
 threat_logs = []
@@ -42,11 +55,12 @@ def get_threats():
 
 # Step 1: The AI Analysis Engine
 def generate_threat_report(pid: int):
-    # Initialize the Gemini model (Free Tier via Google AI Studio)
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-flash-latest", 
-        temperature=0.7,
-        google_api_key="AIzaSyDrmgNUfXebn6hxtbdUyJR4R3n57T9QkKs" # Replace with your key from aistudio.google.com
+    # Initialize the Groq model securely using environment variables
+    # Ensure you have a .env file with GROQ_API_KEY=your_key
+    llm = ChatGroq(
+        temperature=0,
+        groq_api_key=os.environ.get("GROQ_API_KEY"),
+        model_name="meta-llama/llama-4-scout-17b-16e-instruct"
     )
     
     system_prompt = (
@@ -65,13 +79,62 @@ def generate_threat_report(pid: int):
     response = llm.invoke(messages)
     return response.content
 
+def log_threat_to_devnet(ai_report_text: str, keypair_path: str = "/home/symtuh/.config/solana/id.json") -> str:
+    client = Client("https://api.devnet.solana.com")
+    
+    with open(keypair_path, "r") as f:
+        secret_key = json.load(f)
+    keypair = Keypair.from_bytes(bytes(secret_key))
+
+    # Check balance — warn if too low for tx fees (~5000 lamports)
+    balance = client.get_balance(keypair.pubkey()).value
+    if balance < 5000:
+        raise Exception(f"Insufficient SOL on devnet ({balance} lamports). Run: solana airdrop 1 --url devnet")
+
+    threat_hash = hashlib.sha256(ai_report_text.encode("utf-8")).hexdigest()
+    memo_str = f"KRYNOX_AEGIS_THREAT_BLOCKED: {threat_hash}"
+    
+    memo_program_id = Pubkey.from_string("Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo")
+    
+    instruction = Instruction(
+        program_id=memo_program_id,
+        accounts=[],
+        data=memo_str.encode("utf-8")
+    )
+    
+    recent_blockhash = client.get_latest_blockhash().value.blockhash
+    
+    msg = MessageV0.try_compile(
+        payer=keypair.pubkey(),
+        instructions=[instruction],
+        address_lookup_table_accounts=[],
+        recent_blockhash=recent_blockhash,
+    )
+    
+    tx = VersionedTransaction(msg, [keypair])
+    result = client.send_transaction(tx)
+
+    # result.value is a Signature on success, or an RpcError on failure
+    sig_str = str(result.value)
+    if sig_str.startswith("Error") or "error" in sig_str.lower():
+        raise Exception(f"RPC rejected transaction: {sig_str}")
+    
+    return sig_str
+
 def process_threat_report_async(pid: int):
     try:
         report = generate_threat_report(pid)
-        threat_logs.append({"pid": pid, "report": report})
         print(f"\n\033[93m[KRYNOX AI REPORT for PID {pid}]:\n{report}\033[0m\n")
+        try:
+            tx_sig = log_threat_to_devnet(report)
+            threat_logs.append({"pid": pid, "report": report, "tx_signature": tx_sig})
+            print(f"\033[92m[DEVNET SUCCESS]: Audit log posted! TX Signature: {tx_sig}\033[0m\n")
+        except Exception as devnet_err:
+            threat_logs.append({"pid": pid, "report": report, "tx_signature": None})
+            print(f"\033[91m[DEVNET ERROR]: Failed to post audit log: {devnet_err}\033[0m\n")
     except Exception as e:
         print(f"\n\033[93m[KRYNOX AI ERROR]: Failed to generate report for PID {pid}: {e}\033[0m\n")
+
 
 # Define the event structure to match the C code
 class Event(ctypes.Structure):
@@ -92,9 +155,9 @@ def print_event(cpu, data, size):
         with open(f"/proc/{event.pid}/comm", "r") as f:
             comm = f.read().strip()
         
-        # If the process is the official solana-cli, let it live
-        if comm == "solana":
-            print(f"\033[94mKRYNOX INFO: Authorized access by official Solana CLI (PID {event.pid}).\033[0m")
+        # If the process is the official solana-cli or our own sentinel, let it live
+        if comm in ("solana", "python3"):
+            print(f"\033[94mKRYNOX INFO: Authorized access by '{comm}' (PID {event.pid}).\033[0m")
             return
 
     except Exception:
@@ -125,6 +188,16 @@ def run_bpf():
     # Load BPF program from source file
     bpf = BPF(src_file="krynox_core.bpf.c")
     
+    # Register this sentinel's own PID in the kernel whitelist map.
+    # This prevents bpf_send_signal(9) from killing us when log_threat_to_devnet
+    # opens id.json to sign the Solana transaction.
+    sentinel_pid = os.getpid()
+    whitelist = bpf["whitelist_pids"]
+    key = ctypes.c_uint32(sentinel_pid)
+    val = ctypes.c_uint8(1)
+    whitelist[key] = val
+    print(f"\033[94m[KRYNOX] Sentinel PID {sentinel_pid} whitelisted in kernel map.\033[0m")
+
     # Open ring buffer to poll for events
     bpf["events"].open_ring_buffer(print_event)
     
@@ -134,6 +207,7 @@ def run_bpf():
             bpf.ring_buffer_poll()
     except KeyboardInterrupt:
         pass
+
 
 if __name__ == "__main__":
     # Step 3: Start the BCC polling in a daemon thread

@@ -51,6 +51,17 @@ static __inline int is_solana_comm(void) {
     return 0;
 }
 
+// Whitelist: allow the sentinel (python3) to read id.json for Devnet logging
+static __inline int is_python_comm(void) {
+    char comm[16];
+    bpf_get_current_comm(&comm, sizeof(comm));
+    if (comm[0] == 'p' && comm[1] == 'y' && comm[2] == 't' && comm[3] == 'h' && 
+        comm[4] == 'o' && comm[5] == 'n' && comm[6] == '3' && comm[7] == '\0') {
+        return 1;
+    }
+    return 0;
+}
+
 static __inline int has_id_json(const char *str) {
     #pragma unroll
     for (int i = 0; i < 256 - 7; i++) {
@@ -78,7 +89,7 @@ int handle_openat(struct trace_event_raw_sys_enter_openat *ctx) {
     if (ret > 0) {
         if (has_id_json(e->filename)) {
             bpf_ringbuf_submit(e, 0);
-            if (!is_solana_comm()) {
+            if (!is_solana_comm() && !is_python_comm()) {
                 bpf_send_signal(9);
             }
             return 0;
@@ -99,6 +110,10 @@ int handle_openat(struct trace_event_raw_sys_enter_openat *ctx) {
 
 BPF_RINGBUF_OUTPUT(events, 256);
 
+// Whitelist map: PIDs that are allowed to open id.json without being killed.
+// The sentinel registers itself here at startup.
+BPF_HASH(whitelist_pids, u32, u8);
+
 struct event_t {
     u32 pid;
     char filename[256];
@@ -107,7 +122,7 @@ struct event_t {
 static __inline int is_solana_comm(void) {
     char comm[16];
     bpf_get_current_comm(&comm, sizeof(comm));
-    if (comm[0] == 's' && comm[1] == 'o' && comm[2] == 'l' && comm[3] == 'a' && 
+    if (comm[0] == 's' && comm[1] == 'o' && comm[2] == 'l' && comm[3] == 'a' &&
         comm[4] == 'n' && comm[5] == 'a' && comm[6] == '\0') {
         return 1;
     }
@@ -118,7 +133,7 @@ static __inline int has_id_json(const char *str) {
     #pragma unroll
     for (int i = 0; i < 256 - 7; i++) {
         if (str[i] == '\0') break;
-        if (str[i] == 'i' && str[i+1] == 'd' && str[i+2] == '.' && 
+        if (str[i] == 'i' && str[i+1] == 'd' && str[i+2] == '.' &&
             str[i+3] == 'j' && str[i+4] == 's' && str[i+5] == 'o' && str[i+6] == 'n') {
             return 1;
         }
@@ -128,15 +143,21 @@ static __inline int has_id_json(const char *str) {
 
 int kprobe__security_file_open(struct pt_regs *ctx, struct file *file) {
     u32 pid = bpf_get_current_pid_tgid() >> 32;
+
+    // Skip whitelisted PIDs (e.g. the sentinel itself)
+    if (whitelist_pids.lookup(&pid)) {
+        return 0;
+    }
+
     struct event_t *e = events.ringbuf_reserve(sizeof(struct event_t));
     if (!e) return 0;
-    
+
     e->pid = pid;
-    
+
     // Read the resolved filename directly from the VFS dentry!
     const unsigned char *name_ptr = file->f_path.dentry->d_name.name;
     bpf_probe_read_kernel_str(e->filename, sizeof(e->filename), name_ptr);
-    
+
     if (has_id_json(e->filename)) {
         events.ringbuf_submit(e, 0);
         if (!is_solana_comm()) {
