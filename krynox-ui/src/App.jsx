@@ -235,7 +235,6 @@ export default function App() {
 
       {/* Footer Info */}
       <footer className="mt-auto flex justify-between items-center px-4 py-2 text-[10px] text-slate-600 font-mono uppercase tracking-widest">
-        <span>© 2026 Krynox Tech Security Labs</span>
         <div className="flex gap-4">
           <span>LATENCY: 142ms</span>
           <span>BUFFER: 256kb</span>
