@@ -1,0 +1,20 @@
+[Unit]
+Description=Krynox Tech - eBPF Solana Keypair Sentinel
+After=network.target
+
+[Service]
+Type=simple
+# Ensure the path matches your installation
+WorkingDirectory=/opt/krynox
+ExecStart=/usr/bin/python3 /opt/krynox/sentinel.py
+Restart=always
+RestartSec=5
+# Sentinel requires root/CAP_SYS_ADMIN for eBPF attachment
+User=root
+Group=root
+
+# Environment variables for Groq AI
+# EnvironmentFile=/opt/krynox/.env
+
+[Install]
+WantedBy=multi-user.target

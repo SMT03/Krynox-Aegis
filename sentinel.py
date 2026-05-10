@@ -49,6 +49,15 @@ from solders.transaction import VersionedTransaction
 threat_logs = []
 app = FastAPI(title="Krynox Aegis API")
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for the hackathon
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.get("/threats")
 def get_threats():
     return {"threats": threat_logs}
@@ -64,11 +73,15 @@ def generate_threat_report(pid: int):
     )
     
     system_prompt = (
-        f"You are Krynox AI, the forensic analyst for Krynox Tech. A process with PID {pid} "
-        "just attempted an unauthorized read of a Solana developer's id.json keypair. "
-        "The Krynox kernel module instantly killed it. Generate a concise, 3-sentence "
-        "technical post-mortem explaining the potential attack vector (e.g., wallet drainer, "
-        "supply chain exploit) and confirming the hardware-level mitigation."
+        f"You are the Krynox Cyber-Forensics Engine. A high-severity security event occurred: "
+        f"Process PID {pid} attempted an unauthorized read of a Solana BIP39/secret keypair (id.json). "
+        "The Krynox eBPF-LSM module synchronously intercepted the 'security_file_open' syscall and issued a SIGKILL. "
+        "Generate a detailed technical forensic report. Include the following sections:\n"
+        "1. **SYSCALL INTERCEPTION**: Detail the LSM hook enforcement.\n"
+        "2. **ATTACK VECTOR**: Analyze potential T1552 (Unsecured Credentials) or supply-chain masquerading attempts.\n"
+        "3. **HARDWARE-LEVEL MITIGATION**: Explain how VFS-layer protection ensured zero-byte exfiltration.\n"
+        "4. **RISK ASSESSMENT**: Categorize the threat (e.g., Critical/Credential Theft) and confirm system integrity."
+        "\nUse highly technical, professional EDR terminology. Keep it structured and authoritative."
     )
     
     messages = [
@@ -122,17 +135,30 @@ def log_threat_to_devnet(ai_report_text: str, keypair_path: str = "/home/symtuh/
     return sig_str
 
 def process_threat_report_async(pid: int):
+    # Initialize a placeholder so the dashboard sees the threat immediately
+    threat_entry = {
+        "pid": pid,
+        "report": "Analyzing threat forensics via Groq AI...",
+        "tx_signature": "Pending..."
+    }
+    threat_logs.append(threat_entry)
+
     try:
         report = generate_threat_report(pid)
+        threat_entry["report"] = report
         print(f"\n\033[93m[KRYNOX AI REPORT for PID {pid}]:\n{report}\033[0m\n")
+        
         try:
             tx_sig = log_threat_to_devnet(report)
-            threat_logs.append({"pid": pid, "report": report, "tx_signature": tx_sig})
+            threat_entry["tx_signature"] = tx_sig
             print(f"\033[92m[DEVNET SUCCESS]: Audit log posted! TX Signature: {tx_sig}\033[0m\n")
         except Exception as devnet_err:
-            threat_logs.append({"pid": pid, "report": report, "tx_signature": None})
+            threat_entry["tx_signature"] = f"Blockchain Error: {devnet_err}"
             print(f"\033[91m[DEVNET ERROR]: Failed to post audit log: {devnet_err}\033[0m\n")
+            
     except Exception as e:
+        threat_entry["report"] = f"Forensics Unavailable: {e}"
+        threat_entry["tx_signature"] = "N/A"
         print(f"\n\033[93m[KRYNOX AI ERROR]: Failed to generate report for PID {pid}: {e}\033[0m\n")
 
 
@@ -178,6 +204,9 @@ def print_event(cpu, data, size):
         print("Permission denied to terminate process {}.".format(event.pid))
     except Exception as e:
         print("Error killing process {}: {}".format(event.pid, e))
+        
+    # Trigger critical desktop notification
+    os.system('notify-send -u critical "KRYNOX TECH: THREAT BLOCKED" "Unauthorized access by PID {} was terminated in kernel-space."'.format(event.pid))
         
     # Step 3 (Continued): Fire off the generate_threat_report function in the background
     threading.Thread(target=process_threat_report_async, args=(event.pid,), daemon=True).start()
