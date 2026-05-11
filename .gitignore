@@ -24,3 +24,8 @@ test_env.py
 krynox_session_summary.txt
 # Deployment
 github_pages_fix_summary.txt
+
+# Krynox Demo Mode
+krynox-demo-mode/node_modules/
+krynox-demo-mode/dist/
+krynox-demo-mode/.vercel/
